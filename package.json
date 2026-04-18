@@ -1,0 +1,31 @@
+{
+  "name": "android-attack-surface-mapper",
+  "version": "1.0.0",
+  "description": "Android attack surface mapper — extracts components, detects risk patterns, generates graphs, and runs AI-powered security analysis.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "keywords": [
+    "android",
+    "security",
+    "apk",
+    "manifest",
+    "attack-surface",
+    "pentest",
+    "mobile-security"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

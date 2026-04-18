@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Android Attack Surface Mapper</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <span class="topbar-title">⬡ Android Attack Surface Mapper</span>
+    <span id="app-badge" class="badge badge-info" style="display:none"></span>
+    <span style="flex:1"></span>
+    <span id="risk-badge" style="display:none" class="badge"></span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active"  onclick="switchTab('input')">INPUT</div>
+    <div class="tab"         onclick="switchTab('components')">COMPONENTS</div>
+    <div class="tab"         onclick="switchTab('findings')">FINDINGS</div>
+    <div class="tab"         onclick="switchTab('graph')">GRAPH</div>
+    <div class="tab"         onclick="switchTab('report')">REPORT</div>
+  </div>
+
+  <!-- ── INPUT ── -->
+  <div id="tab-input" class="panel active">
+
+    <!-- Drop zone -->
+    <div id="drop-zone" class="drop-zone">
+      <input type="file" id="apk-input" accept=".apk" style="display:none"
+             onchange="handleAPK(this.files[0])"/>
+      <div class="dz-icon">📦</div>
+      <div class="dz-title">Drop your APK here</div>
+      <div class="dz-sub">or <span class="dz-link" onclick="document.getElementById('apk-input').click()">click to browse</span></div>
+      <div id="dz-progress" class="dz-progress" style="display:none">Loading…</div>
+    </div>
+
+    <!-- APK info strip -->
+    <div id="apk-strip" class="apk-strip" style="display:none"></div>
+
+    <!-- Divider -->
+    <div class="or-divider"><span>or paste manifest XML</span></div>
+
+    <!-- Manual XML -->
+    <div>
+      <div class="section-title">AndroidManifest.xml</div>
+      <textarea id="xml-input" spellcheck="false"
+        placeholder="Paste AndroidManifest.xml content here...&#10;&#10;Or use the APK drop zone above — the manifest is extracted automatically."></textarea>
+    </div>
+
+    <div class="row">
+      <button class="btn btn-primary" onclick="analyzeXML()">
+        <span id="scan-spin" class="spinner" style="display:none"></span>
+        Scan manifest
+      </button>
+      <button class="btn" onclick="loadDemo()">Load demo APK</button>
+      <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+    </div>
+
+    <div id="status-msg" style="display:none;font-size:11px;margin-top:4px"></div>
+  </div>
+
+  <!-- ── COMPONENTS ── -->
+  <div id="tab-components" class="panel">
+    <div id="stat-grid" class="stat-grid"></div>
+    <div class="section-title" style="margin-top:4px">All components</div>
+    <table class="comp-table">
+      <thead><tr>
+        <th>Type</th><th>Name</th><th>Exported</th><th>Permission</th>
+        <th>Intent Filters / Deep Links</th><th>Risk</th>
+      </tr></thead>
+      <tbody id="comp-body">
+        <tr><td colspan="6"><div class="empty">Run a scan first</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── FINDINGS ── -->
+  <div id="tab-findings" class="panel">
+    <div id="findings-body"><div class="empty">Run a scan first</div></div>
+  </div>
+
+  <!-- ── GRAPH ── -->
+  <div id="tab-graph" class="panel">
+    <div class="legend-row">
+      <span class="leg"><span class="leg-dot" style="background:#185FA5"></span>Activity</span>
+      <span class="leg"><span class="leg-dot" style="background:#0F6E56"></span>Service</span>
+      <span class="leg"><span class="leg-dot" style="background:#993C1D"></span>Receiver</span>
+      <span class="leg"><span class="leg-dot" style="background:#854F0B"></span>Provider</span>
+      <span class="leg"><span class="leg-dot" style="background:#E24B4A;border-radius:50%"></span>No permission</span>
+      <span class="leg"><span class="leg-dot" style="background:#639922;border-radius:50%"></span>Has permission</span>
+    </div>
+    <svg id="graph-svg" viewBox="0 0 660 200" style="width:100%;border:0.5px solid var(--border);border-radius:6px;background:var(--bg);min-height:200px;margin-top:8px">
+      <text x="330" y="105" text-anchor="middle" style="fill:var(--text3);font-size:12px;font-family:monospace">Run a scan to generate the graph</text>
+    </svg>
+    <div style="margin-top:12px">
+      <div class="section-title">Mermaid source — paste at mermaid.live</div>
+      <div id="mermaid-box" class="code-box">— run scan first —</div>
+    </div>
+  </div>
+
+  <!-- ── REPORT ── -->
+  <div id="tab-report" class="panel">
+    <div id="report-body"><div class="empty">Run a scan to generate a report</div></div>
+  </div>
+
+</div>
+
+<script src="axml.js"></script>
+<script src="apk.js"></script>
+<script src="parser.js"></script>
+<script src="findings.js"></script>
+<script src="graph.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
