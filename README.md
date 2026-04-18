@@ -61,27 +61,22 @@ Upload an APK file using drag and drop. The tool will automatically extract the 
 
 ## Project Structure
 
+```
 android-attack-surface-mapper/
-
-├── public/
-
-│   ├── axml.js
-
-│   ├── apk.js
-
-│   ├── parser.js
-
-│   ├── findings.js
-
-│   ├── graph.js
-
-│   └── app.js
-
-├── server/
-
-│   └── index.js
-
-├── package.json
+│
+├── public/                # Frontend logic (runs in browser)
+│   ├── axml.js            # Binary Android XML decoder
+│   ├── apk.js             # APK loader and extractor
+│   ├── parser.js          # Manifest parser
+│   ├── findings.js        # Security checks engine
+│   ├── graph.js           # Attack graph generator
+│   └── app.js             # Main application controller
+│
+├── server/                # Backend (static server)
+│   └── index.js           # Express server
+│
+├── package.json           # Project dependencies and scripts
+```
 
 ## Security
 
