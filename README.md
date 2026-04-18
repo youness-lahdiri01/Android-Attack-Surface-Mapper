@@ -1,110 +1,133 @@
-# ⬡ Android Attack Surface Mapper
+# Android Attack Surface Mapper
 
-Audit Android apps by pasting their `AndroidManifest.xml`. The tool extracts all components, detects risky patterns, generates an attack graph, and runs an AI-powered security analysis.
+## Overview
 
-![screenshot](https://via.placeholder.com/900x500/0e0e0f/e8e6e0?text=Android+Attack+Surface+Mapper)
+Android Attack Surface Mapper is a security analysis tool designed to audit Android applications by analyzing APK files or AndroidManifest.xml directly in the browser.
+
+The tool performs a fully local analysis without requiring any API keys or external services, ensuring that no data leaves the user's machine.
 
 ## Features
 
-| Feature | Details |
-|---------|---------|
-| **Component extraction** | Activities, Services, Receivers, Providers |
-| **Risk detection** | Exported without permission, debuggable, allowBackup, deep links, overprivileged permissions |
-| **Attack graph** | SVG graph of components ↔ intents ↔ permissions + Mermaid source |
-| **Surface risk score** | 0–100 score based on exposure, privileges, and data access |
-| **AI analysis** | Claude generates attack scenarios and a remediation roadmap |
+- Upload and analyze APK files
+- Automatic extraction of AndroidManifest.xml
+- Static security analysis
+- Detection of multiple vulnerability categories
+- Risk score calculation (0–100)
+- Attack surface visualization (graph)
+- Detailed security report generation
 
-## Quick start
+## Installation
 
-### Option A — Static HTML (no server, no AI)
+Clone the repository:
 
-Open `public/index.html` directly in your browser. All parsing and graph features work. AI analysis requires an API key and a server.
+git clone https://github.com/youness-lahdiri01/Android-Attack-Surface-Mapper.git
 
-### Option B — Express server (recommended, AI enabled)
+Navigate to the project directory:
 
-**Prerequisites:** Node.js ≥ 16
+cd Android-Attack-Surface-Mapper
 
-```bash
-# 1. Clone
-git clone https://github.com/YOUR_USERNAME/android-attack-surface-mapper.git
-cd android-attack-surface-mapper
+Install dependencies:
 
-# 2. Install dependencies
 npm install
 
-# 3. Set your Anthropic API key
-cp .env.example .env
-# Edit .env and paste your key from https://console.anthropic.com
+Start the server:
 
-# 4. Start
 npm start
-# → http://localhost:3000
-```
-
-> **Dev mode** (auto-restart on file changes):
-> ```bash
-> npm run dev
-> ```
 
 ## Usage
 
-1. Paste your `AndroidManifest.xml` into the input field (or click **Load demo manifest**)
-2. Click **Scan manifest**
-3. Navigate through the tabs:
-   - **COMPONENTS** — full component table with risk indicators
-   - **FINDINGS** — security findings sorted by severity
-   - **GRAPH** — visual attack graph + Mermaid source
-   - **AI ANALYSIS** — Claude's assessment and remediation roadmap
+Open a browser and go to:
 
-## Security checks performed
+http://localhost:3000
 
-### App-level
-- `android:debuggable="true"` in production
-- `android:allowBackup="true"` (ADB data extraction)
-- `android:usesCleartextTraffic="true"` (HTTP allowed)
+Upload an APK file using drag and drop. The tool will automatically extract the manifest, analyze components, detect vulnerabilities, and display the results including risk score, findings, and attack graph.
 
-### Component-level
-- Exported components without permission guard
-- ContentProviders exported without read/writePermission
-- Deep links without `android:autoVerify="true"` (URL hijacking)
-- Components implicitly exported via intent-filter (API < 31 risk)
+## Detected Vulnerabilities
 
-### Permission-level
-- Dangerous permissions (SMS, Contacts, Camera, Location, Storage…)
+- Debuggable enabled
+- Exported components without permission
+- Exposed ContentProvider
+- allowBackup enabled
+- Cleartext traffic enabled
+- Unverified deep links
+- Dangerous permissions
+- Implicit component export
 
-## Project structure
+## Risk Score
 
-```
+- 0–29: Low risk
+- 30–69: Medium risk
+- 70–100: High risk
+
+## Project Structure
+
 android-attack-surface-mapper/
+
 ├── public/
-│   ├── index.html      # Main UI
-│   ├── style.css       # Styles (dark/light mode)
-│   ├── parser.js       # Manifest XML parser
-│   ├── findings.js     # Security pattern detection
-│   ├── graph.js        # SVG + Mermaid graph builder
-│   ├── api.js          # Anthropic API client
-│   └── app.js          # Main controller
+
+│   ├── axml.js
+
+│   ├── apk.js
+
+│   ├── parser.js
+
+│   ├── findings.js
+
+│   ├── graph.js
+
+│   └── app.js
+
 ├── server/
-│   └── index.js        # Express server + API proxy
-├── .env.example        # Environment variable template
-├── .gitignore
-└── package.json
-```
 
-## Environment variables
+│   └── index.js
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes (for AI) | Your key from [console.anthropic.com](https://console.anthropic.com) |
-| `PORT` | No | Server port (default: 3000) |
+├── package.json
 
-## Chapters & labs covered
+## Security
 
-- Chapter 2 — Android component model
-- Chapter 11 — IPC & intent security
-- Chapter 12 — Defensive audit
-- Lab 4, Lab 7 — Exported component audit
+The tool operates entirely locally. No data is transmitted to external servers and no API keys are required.
+## Example and Screenshots
 
-## License
+The following example demonstrates how the tool analyzes an APK and presents the results.
 
-MIT
+### Step 1: Upload APK
+
+The user uploads an APK file using the drag-and-drop interface.
+
+### Step 2: Analysis Results
+
+After processing, the tool extracts the AndroidManifest.xml and displays key information including components and permissions.
+
+<img width="1307" height="886" alt="Screenshot 2026-04-18 205736" src="https://github.com/user-attachments/assets/63a73317-5b41-4f6c-93d3-61cec9d41332" />
+
+### Step 3: Detected Vulnerabilities
+
+The tool identifies security issues such as exported components, insecure configurations, and dangerous permissions.
+
+<img width="1356" height="871" alt="Screenshot 2026-04-18 205750" src="https://github.com/user-attachments/assets/dc17641e-74ce-415a-863d-ed4f1a7fb675" />
+
+### Step 4: Attack Surface Graph
+
+A visual representation of the attack surface is generated, showing exposed components and their relationships.
+
+<img width="1158" height="439" alt="Screenshot 2026-04-18 205652" src="https://github.com/user-attachments/assets/706a6a75-21f0-40c9-954a-d62e5c958311" />
+
+### Step 5: Security Report
+
+A complete report is generated including the risk score and remediation recommendations.
+
+<img width="1307" height="886" alt="Screenshot 2026-04-18 205736" src="https://github.com/user-attachments/assets/ef3d808d-7a00-43fa-a1ad-bd2d6c673a3a" />
+
+
+## Future Improvements
+
+- Support for AAB files
+- Dynamic analysis capabilities
+- CI/CD integration
+- Advanced detection techniques
+- 
+
+## Author
+
+Youness Lahdiri
+Amine KABBAJ
