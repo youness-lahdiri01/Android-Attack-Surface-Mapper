@@ -65,7 +65,10 @@
   <!-- ── COMPONENTS ── -->
   <div id="tab-components" class="panel">
     <div id="stat-grid" class="stat-grid"></div>
-    <div class="section-title" style="margin-top:4px">All components</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <div class="section-title" style="margin-bottom:0">All components</div>
+      <input type="text" id="comp-filter" class="filter-input" placeholder="Filter by name or type…" oninput="filterComponents(this.value)"/>
+    </div>
     <table class="comp-table">
       <thead><tr>
         <th>Type</th><th>Name</th><th>Exported</th><th>Permission</th>
@@ -96,14 +99,32 @@
       <text x="330" y="105" text-anchor="middle" style="fill:var(--text3);font-size:12px;font-family:monospace">Run a scan to generate the graph</text>
     </svg>
     <div style="margin-top:12px">
-      <div class="section-title">Mermaid source — paste at mermaid.live</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="section-title" style="margin-bottom:0">Mermaid source — paste at mermaid.live</div>
+        <button class="btn btn-ghost" onclick="copyMermaid()" style="font-size:10px;padding:3px 10px">Copy</button>
+      </div>
       <div id="mermaid-box" class="code-box">— run scan first —</div>
     </div>
   </div>
 
   <!-- ── REPORT ── -->
   <div id="tab-report" class="panel">
+    <div class="row">
+      <button class="btn btn-ghost" onclick="exportJSON()" style="font-size:11px">↓ Export JSON</button>
+      <button class="btn btn-ghost" onclick="exportCSV()"  style="font-size:11px">↓ Export CSV</button>
+    </div>
     <div id="report-body"><div class="empty">Run a scan to generate a report</div></div>
+    <div id="ai-section" class="report-section" style="display:none;flex-direction:column;gap:10px">
+      <div class="report-title" style="margin-bottom:0">AI Security Analysis</div>
+      <div style="font-size:11px;color:var(--text2);font-family:var(--sans)">Get a threat narrative and attack vectors from Claude AI. Requires ANTHROPIC_API_KEY on the server.</div>
+      <div>
+        <button class="btn btn-primary" id="ai-btn" onclick="aiAnalyze()">
+          <span id="ai-spin" class="spinner" style="display:none"></span>
+          Analyze with AI
+        </button>
+      </div>
+      <div id="ai-result" class="ai-result" style="display:none"></div>
+    </div>
   </div>
 
 </div>

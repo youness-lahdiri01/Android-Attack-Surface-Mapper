@@ -1,7 +1,10 @@
 /**
  * app.js — Main controller
- * 100% local — no API key required.
  */
+
+// ── Global scan state ─────────────────────────────────────────────────────────
+let _scanState     = null;
+let _allComponents = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,10 +36,17 @@ function clearAll(){
   $('apk-strip').style.display = 'none';
   $('app-badge').style.display = 'none';
   $('risk-badge').style.display = 'none';
+  const cf = $('comp-filter');
+  if (cf) cf.value = '';
   setStatus('');
-  $('comp-body').innerHTML = '<tr><td colspan="6"><div class="empty">Run a scan first</div></td></tr>';
+  _scanState     = null;
+  _allComponents = [];
+  $('comp-body').innerHTML     = '<tr><td colspan="6"><div class="empty">Run a scan first</div></td></tr>';
   $('findings-body').innerHTML = '<div class="empty">Run a scan first</div>';
-  $('report-body').innerHTML = '<div class="empty">Run a scan to generate a report</div>';
+  $('report-body').innerHTML   = '<div class="empty">Run a scan to generate a report</div>';
+  $('ai-section').style.display = 'none';
+  $('ai-result').style.display  = 'none';
+  $('ai-result').innerHTML = '';
   $('graph-svg').innerHTML = '<text x="330" y="105" text-anchor="middle" style="fill:var(--text3);font-size:12px;font-family:monospace">Run a scan to generate the graph</text>';
   $('mermaid-box').textContent = '— run scan first —';
   $('stat-grid').innerHTML = '';
@@ -47,6 +57,7 @@ function clearAll(){
 const DEMO_XML = `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.vulnerablebank">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
@@ -99,7 +110,6 @@ function loadDemo(){
 document.addEventListener('DOMContentLoaded', () => {
   const zone = $('drop-zone');
   if (!zone) return;
-
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('over'));
   zone.addEventListener('drop', e => {
@@ -121,11 +131,11 @@ function showAPKStrip(info){
   const el = $('apk-strip');
   el.style.display = 'flex';
   el.innerHTML = [
-    ['File', info.fileName],
-    ['Size', info.fileSize],
-    ['DEX', info.dexCount],
+    ['File',   info.fileName],
+    ['Size',   info.fileSize],
+    ['DEX',    info.dexCount],
     ['Native', info.nativeArchs],
-    ['Files', info.totalFiles],
+    ['Files',  info.totalFiles],
   ].map(([l,v]) => `<div class="api"><span class="api-l">${l}</span><span class="api-v">${v}</span></div>`).join('')
    + `<span class="badge badge-green" style="margin-left:auto">APK loaded ✓</span>`;
 }
@@ -136,21 +146,16 @@ async function handleAPK(file){
     setStatus('Please select a .apk file', 'var(--red)');
     return;
   }
-
   $('drop-zone').style.pointerEvents = 'none';
   setDZProgress('Loading…');
   setStatus('');
-
   try {
     const { xml, apkInfo } = await APKLoader.load(file, msg => setDZProgress(msg));
     $('xml-input').value = xml;
     showAPKStrip(apkInfo);
     setDZProgress('');
     setStatus(`✓ Manifest extracted from ${file.name}`, 'var(--green)');
-
-    // auto-scan
     await analyzeXML();
-
   } catch(err) {
     setDZProgress('');
     setStatus('APK Error: ' + err.message, 'var(--red)');
@@ -171,7 +176,38 @@ function riskDots(score){
   return '<div class="rdots">' + [0,1,2].map(i=>`<div class="rd ${i<n?c:''}"></div>`).join('') + '</div>';
 }
 
+function buildComponentRow(c){
+  const risk   = calcComponentRisk(c);
+  const expBdg = c.exported === true  ? '<span class="badge badge-red">yes</span>' :
+                 c.exported === false ? '<span class="badge badge-green">no</span>' :
+                 '<span class="badge" style="opacity:.5">inferred</span>';
+  const tTag = `<span class="tag ${TYPE_CLS[c.type]||'tg'}">${c.type}</span>`;
+  const iStr = c.actions.slice(0,2).map(a=>`<span class="tag tg">${a.split('.').pop()}</span>`).join('')
+             + (c.actions.length>2?`<span class="tag tg">+${c.actions.length-2}</span>`:'');
+  const dStr = c.schemes.map(s=>`<span class="tag tr">${s}://</span>`).join('');
+  return `<tr>
+    <td>${tTag}</td>
+    <td style="max-width:140px;word-break:break-all;font-size:10px">${c.name.replace(/^.*\./,'')}</td>
+    <td>${expBdg}</td>
+    <td style="font-size:10px;opacity:.7;max-width:120px;word-break:break-all">${c.perm?c.perm.split('.').pop():'—'}</td>
+    <td>${iStr}${dStr}</td>
+    <td>${riskDots(risk)}</td>
+  </tr>`;
+}
+
+function filterComponents(q){
+  const lower    = q.toLowerCase();
+  const filtered = lower
+    ? _allComponents.filter(c => c.name.toLowerCase().includes(lower) || c.type.toLowerCase().includes(lower))
+    : _allComponents;
+  const tbody = $('comp-body');
+  tbody.innerHTML = filtered.length
+    ? filtered.map(buildComponentRow).join('')
+    : '<tr><td colspan="6"><div class="empty">No matching components</div></td></tr>';
+}
+
 function renderComponents(components){
+  _allComponents = components;
   const tbody = $('comp-body');
   if (!components.length){
     tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No components found</div></td></tr>';
@@ -193,30 +229,13 @@ function renderComponents(components){
       <div class="stat-lbl">${l}</div>
     </div>`).join('');
 
-  tbody.innerHTML = components.map(c => {
-    const risk   = calcComponentRisk(c);
-    const expBdg = c.exported === true  ? '<span class="badge badge-red">yes</span>' :
-                   c.exported === false ? '<span class="badge badge-green">no</span>' :
-                   '<span class="badge" style="opacity:.5">inferred</span>';
-    const tTag   = `<span class="tag ${TYPE_CLS[c.type]||'tg'}">${c.type}</span>`;
-    const iStr   = c.actions.slice(0,2).map(a=>`<span class="tag tg">${a.split('.').pop()}</span>`).join('')
-                 + (c.actions.length>2?`<span class="tag tg">+${c.actions.length-2}</span>`:'');
-    const dStr   = c.schemes.map(s=>`<span class="tag tr">${s}://</span>`).join('');
-    return `<tr>
-      <td>${tTag}</td>
-      <td style="max-width:140px;word-break:break-all;font-size:10px">${c.name.replace(/^.*\./,'')}</td>
-      <td>${expBdg}</td>
-      <td style="font-size:10px;opacity:.7;max-width:120px;word-break:break-all">${c.perm?c.perm.split('.').pop():'—'}</td>
-      <td>${iStr}${dStr}</td>
-      <td>${riskDots(risk)}</td>
-    </tr>`;
-  }).join('');
+  tbody.innerHTML = components.map(buildComponentRow).join('');
 }
 
 function renderFindings(findings){
   const el = $('findings-body');
   if (!findings.length){
-    el.innerHTML = '<div class="empty">No findings detected — looks clean! 🟢</div>';
+    el.innerHTML = '<div class="empty">No findings detected — looks clean!</div>';
     return;
   }
   const sevLbl = { critical:'🔴 CRITICAL', high:'🟠 HIGH', medium:'🟡 MEDIUM', low:'🟢 LOW' };
@@ -231,7 +250,7 @@ function renderFindings(findings){
 
 function renderReport(data){
   const { parsed, findings, score } = data;
-  const { components, pkg, permissions, allowBackup, debuggable } = parsed;
+  const { components, pkg, permissions, allowBackup, debuggable, targetSdk, minSdk } = parsed;
   const exp    = components.filter(c => c.inferredExported);
   const noPerm = exp.filter(c => !c.perm);
   const crits  = findings.filter(f => f.sev==='critical');
@@ -239,12 +258,11 @@ function renderReport(data){
   const meds   = findings.filter(f => f.sev==='medium');
 
   const scoreBadge = score >= 70 ? 'badge-red' : score >= 40 ? 'badge-amber' : 'badge-green';
-  const scoreLabel = score >= 70 ? 'HIGH RISK' : score >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
+  const scoreLabel = score >= 70 ? 'HIGH RISK'  : score >= 40 ? 'MEDIUM RISK' : 'LOW RISK';
 
   $('report-body').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:14px">
 
-      <!-- Score -->
       <div class="report-section" style="display:flex;align-items:center;gap:20px">
         <div>
           <div class="score-big" style="color:${score>=70?'var(--red)':score>=40?'var(--amber)':'var(--green)'}">${score}</div>
@@ -259,48 +277,34 @@ function renderReport(data){
           </div>
           <div style="font-size:11px;color:var(--text2);font-family:var(--sans);line-height:1.6">
             Package <strong>${pkg}</strong> — ${components.length} components, ${exp.length} exported, ${noPerm.length} without permission guard.
-            ${debuggable ? '⚠️ App is <strong>debuggable</strong>.' : ''}
-            ${allowBackup ? '⚠️ ADB <strong>backup enabled</strong>.' : ''}
+            ${targetSdk ? `Target SDK: <strong>${targetSdk}</strong>.` : ''}
+            ${debuggable ? ' ⚠️ App is <strong>debuggable</strong>.' : ''}
+            ${allowBackup ? ' ⚠️ ADB <strong>backup enabled</strong>.' : ''}
           </div>
         </div>
       </div>
 
-      <!-- Summary table -->
       <div class="report-section">
         <div class="report-title">Attack Surface Summary</div>
         <table style="width:100%;font-size:11px;border-collapse:collapse">
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">Total components</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700">${components.length}</td>
-          </tr>
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">Exported components</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700;color:var(--red)">${exp.length}</td>
-          </tr>
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">Exported without permission</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700;color:var(--red)">${noPerm.length}</td>
-          </tr>
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">Deep links (schemes)</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700">${components.filter(c=>c.schemes.length>0).length}</td>
-          </tr>
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">Permissions declared</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700">${permissions.length}</td>
-          </tr>
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:5px 0;color:var(--text3)">ADB backup</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700;color:${allowBackup?'var(--red)':'var(--green)'}">${allowBackup?'Enabled':'Disabled'}</td>
-          </tr>
-          <tr>
-            <td style="padding:5px 0;color:var(--text3)">Debuggable</td>
-            <td style="padding:5px 0;text-align:right;font-weight:700;color:${debuggable?'var(--red)':'var(--green)'}">${debuggable?'YES ⚠️':'No'}</td>
-          </tr>
+          ${[
+            ['Total components',              components.length, ''],
+            ['Exported components',           exp.length,        exp.length    ? 'var(--red)'   : ''],
+            ['Exported without permission',   noPerm.length,     noPerm.length ? 'var(--red)'   : ''],
+            ['Deep links (schemes)',          components.filter(c=>c.schemes.length>0).length, ''],
+            ['Permissions declared',          permissions.length, ''],
+            ['targetSdkVersion',             targetSdk || '—',   targetSdk && targetSdk < 31 ? 'var(--amber)' : ''],
+            ['minSdkVersion',                minSdk    || '—',   ''],
+            ['ADB backup',                   allowBackup ? 'Enabled' : 'Disabled', allowBackup ? 'var(--red)' : 'var(--green)'],
+            ['Debuggable',                   debuggable  ? 'YES ⚠️' : 'No',       debuggable  ? 'var(--red)' : 'var(--green)'],
+          ].map(([label, val, col]) => `
+            <tr style="border-bottom:0.5px solid var(--border)">
+              <td style="padding:5px 0;color:var(--text3)">${label}</td>
+              <td style="padding:5px 0;text-align:right;font-weight:700;color:${col||'inherit'}">${val}</td>
+            </tr>`).join('')}
         </table>
       </div>
 
-      <!-- Exported components list -->
       <div class="report-section">
         <div class="report-title">Exported Components (${exp.length})</div>
         <div style="display:flex;flex-direction:column;gap:6px">
@@ -316,7 +320,6 @@ function renderReport(data){
         </div>
       </div>
 
-      <!-- Remediation roadmap -->
       <div class="report-section">
         <div class="report-title">Remediation Roadmap</div>
         <div style="display:flex;flex-direction:column;gap:8px">
@@ -339,11 +342,149 @@ function renderReport(data){
 function updateBadges(pkg, score){
   const ab = $('app-badge');
   ab.textContent = pkg; ab.style.display = '';
-
   const rb = $('risk-badge');
   rb.textContent = `Risk: ${score}/100`;
   rb.className   = 'badge ' + (score>=70?'badge-red':score>=40?'badge-amber':'badge-green');
   rb.style.display = '';
+}
+
+// ── Copy Mermaid ──────────────────────────────────────────────────────────────
+
+function copyMermaid(){
+  const text = $('mermaid-box').textContent;
+  if (text === '— run scan first —') return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('[onclick="copyMermaid()"]');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => {
+    const range = document.createRange();
+    range.selectNodeContents($('mermaid-box'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+  });
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function exportJSON(){
+  if (!_scanState){ alert('Run a scan first.'); return; }
+  const { parsed, findings, score } = _scanState;
+  const payload = {
+    package:    parsed.pkg,
+    riskScore:  score,
+    scannedAt:  new Date().toISOString(),
+    appFlags: {
+      debuggable:       parsed.debuggable,
+      allowBackup:      parsed.allowBackup,
+      clearTextTraffic: parsed.clearTextTraffic,
+      targetSdkVersion: parsed.targetSdk,
+      minSdkVersion:    parsed.minSdk,
+    },
+    permissions: parsed.permissions,
+    components:  parsed.components,
+    findings,
+  };
+  downloadBlob(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    `${parsed.pkg}-attack-surface.json`
+  );
+}
+
+function exportCSV(){
+  if (!_scanState){ alert('Run a scan first.'); return; }
+  const { findings, parsed } = _scanState;
+  const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+  const rows = [
+    ['severity','title','body','fix'],
+    ...findings.map(f => [f.sev, f.title, f.body, f.fix].map(esc)),
+  ];
+  downloadBlob(
+    new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' }),
+    `${parsed.pkg}-findings.csv`
+  );
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a   = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── AI Analysis ───────────────────────────────────────────────────────────────
+
+async function aiAnalyze(){
+  if (!_scanState){ alert('Run a scan first.'); return; }
+
+  const btn  = $('ai-btn');
+  const spin = $('ai-spin');
+  const res  = $('ai-result');
+
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+  res.style.display  = 'none';
+  res.innerHTML = '';
+
+  const { parsed, findings, score } = _scanState;
+  const exported = parsed.components.filter(c => c.inferredExported);
+
+  const prompt =
+`You are an Android security expert. Analyze this app's attack surface concisely.
+
+Package: ${parsed.pkg}
+Risk Score: ${score}/100
+targetSdkVersion: ${parsed.targetSdk || 'unknown'}
+
+FINDINGS (${findings.length}):
+${findings.map((f,i) => `${i+1}. [${f.sev.toUpperCase()}] ${f.title}`).join('\n')}
+
+EXPORTED COMPONENTS (${exported.length}):
+${exported.map(c =>
+  `  ${c.type} .${c.name.replace(/^.*\./,'')}${c.perm?' [guarded: '+c.perm.split('.').pop()+']':' [NO PERMISSION]'}`
+).join('\n')}
+
+PERMISSIONS: ${parsed.permissions.map(p=>p.split('.').pop()).join(', ')||'none'}
+
+Respond in this exact format:
+
+**Threat Narrative**
+(2-3 sentences: what can an attacker actually do with this surface?)
+
+**Top 3 Attack Vectors**
+1. (component or flag) — (one-line exploit scenario)
+2. ...
+3. ...
+
+**Risk Verdict**
+(one sentence)`;
+
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    });
+    const json = await r.json();
+    if (!r.ok) throw new Error(json.error || 'API error');
+    res.innerHTML = formatAIResponse(json.text || '');
+    res.style.display = 'block';
+  } catch(err) {
+    res.innerHTML = `<div style="color:var(--red);font-size:11px;font-family:var(--sans)">${err.message}</div>`;
+    res.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+  }
+}
+
+function formatAIResponse(text){
+  return '<p>' + text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n(\d+)\.\s/g, '<br><span style="color:var(--text3);font-weight:700;font-family:var(--mono)">$1.</span> ')
+    .replace(/\n/g, '<br>') + '</p>';
 }
 
 // ── Main scan ─────────────────────────────────────────────────────────────────
@@ -361,12 +502,15 @@ async function analyzeXML(){
     const score    = computeSurfaceScore({ ...parsed, findings });
     const mermaid  = buildMermaidGraph({ components: parsed.components, pkg: parsed.pkg });
 
+    _scanState = { parsed, findings, score };
+
     updateBadges(parsed.pkg, score);
     renderComponents(parsed.components);
     renderFindings(findings);
     buildSVGGraph({ components: parsed.components, pkg: parsed.pkg });
     $('mermaid-box').textContent = mermaid;
     renderReport({ parsed, findings, score });
+    $('ai-section').style.display = 'flex';
 
     setStatus(
       `✓ ${parsed.components.length} components · ${findings.length} findings · risk ${score}/100`,

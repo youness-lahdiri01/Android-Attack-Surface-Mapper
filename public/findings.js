@@ -1,6 +1,5 @@
 /**
  * findings.js — Security pattern detection engine
- * Detects risky patterns in parsed manifest data.
  */
 
 const SENSITIVE_NAME_PATTERNS = [
@@ -29,11 +28,9 @@ const DANGEROUS_PERMISSIONS = [
 
 /**
  * Run all security checks and return a list of findings.
- * @param {{ components, permissions, allowBackup, debuggable, pkg, clearTextTraffic }} data
- * @returns {Array<{ sev, title, body, fix }>}
  */
 function buildFindings(data) {
-  const { components, allowBackup, debuggable, permissions, pkg, clearTextTraffic } = data;
+  const { components, allowBackup, debuggable, permissions, pkg, clearTextTraffic, targetSdk = 0 } = data;
   const findings = [];
 
   // ── App-level checks ──────────────────────────────────────────────────────
@@ -73,6 +70,21 @@ function buildFindings(data) {
     });
   }
 
+  if (targetSdk > 0 && targetSdk < 31) {
+    const sev = targetSdk < 23 ? 'high' : 'medium';
+    findings.push({
+      sev,
+      title: `Low targetSdkVersion: API ${targetSdk}`,
+      body: `Targeting API ${targetSdk} means the app misses mandatory security improvements: `
+          + (targetSdk < 23 ? 'runtime permissions (users cannot deny dangerous perms individually), ' : '')
+          + (targetSdk < 26 ? 'background execution limits, ' : '')
+          + (targetSdk < 28 ? 'cleartext blocked by default, ' : '')
+          + 'explicit android:exported requirement (API 31+). '
+          + 'Google Play may restrict distribution for apps targeting below API 33.',
+      fix: 'Raise targetSdkVersion to at least 33 (Android 13) and fix all resulting compatibility issues.',
+    });
+  }
+
   // ── Component-level checks ────────────────────────────────────────────────
 
   const exported = components.filter(c => c.inferredExported);
@@ -80,7 +92,6 @@ function buildFindings(data) {
   exported.forEach(c => {
     const isSensitive = SENSITIVE_NAME_PATTERNS.some(p => p.test(c.name));
 
-    // Exported without any permission guard
     if (!c.perm) {
       const sev = isSensitive ? 'critical' : 'high';
       findings.push({
@@ -95,8 +106,8 @@ function buildFindings(data) {
       });
     }
 
-    // ContentProvider without read/write permissions
-    if (c.type === 'Provider' && c.inferredExported && !c.perm) {
+    // ContentProvider without read/write permissions (separate finding — distinct risk)
+    if (c.type === 'Provider' && !c.perm) {
       findings.push({
         sev: 'critical',
         title: `ContentProvider exposed without read/writePermission: ${c.name.replace(/^.*\./, '')}`,
@@ -149,7 +160,21 @@ function buildFindings(data) {
     });
   }
 
-  // Sort: critical first
+  // Task affinity hijacking
+  components
+    .filter(c => c.type === 'Activity' && c.taskAffinity !== null && c.taskAffinity !== '' && c.inferredExported)
+    .forEach(c => {
+      findings.push({
+        sev: 'medium',
+        title: `Custom taskAffinity on exported Activity: ${c.name.replace(/^.*\./, '')}`,
+        body: `"${c.name}" sets android:taskAffinity="${c.taskAffinity}". Combined with allowTaskReparenting `
+            + 'or a singleTask/singleInstance launchMode, this enables task hijacking — a malicious app '
+            + 'can capture this activity into its own task stack.',
+        fix: 'Remove android:taskAffinity or set it to an empty string ("") to prevent task reparenting. '
+           + 'Audit android:launchMode and android:allowTaskReparenting on the same activity.',
+      });
+    });
+
   const order = { critical: 0, high: 1, medium: 2, low: 3 };
   findings.sort((a, b) => order[a.sev] - order[b.sev]);
   return findings;
@@ -157,24 +182,15 @@ function buildFindings(data) {
 
 /**
  * Compute an overall surface risk score (0–100).
- * Higher = more exposed.
+ * Each finding type carries a weight; app-level flags add a flat penalty.
  */
 function computeSurfaceScore(data) {
-  const { components, findings, debuggable, allowBackup, clearTextTraffic } = data;
-  let score = 100;
-
-  if (debuggable)        score -= 28;
-  if (allowBackup)       score -= 12;
-  if (clearTextTraffic)  score -= 10;
-
-  const exported = components.filter(c => c.inferredExported);
-  const noPerm   = exported.filter(c => !c.perm);
-  score -= noPerm.length * 12;
-
-  const criticals = findings.filter(f => f.sev === 'critical').length;
-  const highs     = findings.filter(f => f.sev === 'high').length;
-  score -= criticals * 6;
-  score -= highs * 3;
-
-  return Math.min(100, Math.max(0, 100 - score));
+  const { findings, debuggable, allowBackup, clearTextTraffic } = data;
+  let risk = 0;
+  if (debuggable)       risk += 25;
+  if (allowBackup)      risk += 12;
+  if (clearTextTraffic) risk += 10;
+  const w = { critical: 12, high: 7, medium: 3, low: 1 };
+  findings.forEach(f => { risk += w[f.sev] || 0; });
+  return Math.min(100, risk);
 }

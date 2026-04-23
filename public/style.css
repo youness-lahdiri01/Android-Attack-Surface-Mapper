@@ -141,6 +141,16 @@ textarea:focus{border-color:var(--text3)}
 /* empty */
 .empty{color:var(--text3);font-size:12px;text-align:center;padding:40px;font-family:var(--sans)}
 
+/* filter input */
+.filter-input{flex:1;font-family:var(--mono);font-size:11px;padding:4px 10px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);outline:none}
+.filter-input:focus{border-color:var(--text3)}
+.filter-input::placeholder{color:var(--text3)}
+
+/* AI response */
+.ai-result{font-size:12px;font-family:var(--sans);line-height:1.7;color:var(--text2)}
+.ai-result p{margin-bottom:8px}
+.ai-result strong{color:var(--text)}
+
 @media(max-width:600px){
   .stat-grid{grid-template-columns:repeat(2,1fr)}
   .tab{padding:8px 10px;font-size:10px}

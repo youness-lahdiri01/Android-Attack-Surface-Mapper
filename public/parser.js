@@ -94,6 +94,8 @@ function extractComponents(xml, type, tag) {
     const perm        = (attrs.match(/android:permission="([^"]+)"/) || [])[1] || '';
     const authorities = (attrs.match(/android:authorities="([^"]+)"/) || [])[1] || '';
     const grantUri    = /android:grantUriPermissions="true"/i.test(attrs);
+    const taMatch     = attrs.match(/android:taskAffinity="([^"]*)"/);
+    const taskAffinity = taMatch ? taMatch[1] : null;
 
     const actions  = [...block.matchAll(/action android:name="([^"]+)"/gi)].map(x => x[1]);
     const schemes  = [...block.matchAll(/data android:scheme="([^"]+)"/gi)].map(x => x[1]);
@@ -111,6 +113,7 @@ function extractComponents(xml, type, tag) {
       perm,
       authorities,
       grantUri,
+      taskAffinity,
       actions,
       schemes,
       hosts,
@@ -126,11 +129,15 @@ function extractComponents(xml, type, tag) {
  * @returns {{ components, pkg, permissions, allowBackup, debuggable, networkSecConfig }}
  */
 function parseManifest(xml) {
-  const pkg             = (xml.match(/package="([^"]+)"/) || [])[1] || 'com.unknown.app';
-  const allowBackup     = /allowBackup="true"/i.test(xml);
-  const debuggable      = /debuggable="true"/i.test(xml);
+  const pkg              = (xml.match(/package="([^"]+)"/) || [])[1] || 'com.unknown.app';
+  const allowBackup      = /allowBackup="true"/i.test(xml);
+  const debuggable       = /debuggable="true"/i.test(xml);
   const networkSecConfig = /networkSecurityConfig/i.test(xml);
   const clearTextTraffic = /usesCleartextTraffic="true"/i.test(xml);
+
+  const sdkBlock  = (xml.match(/<uses-sdk\b[^>]*\/?>/i) || [''])[0];
+  const targetSdk = parseInt((sdkBlock.match(/android:targetSdkVersion="(\d+)"/) || [])[1]) || 0;
+  const minSdk    = parseInt((sdkBlock.match(/android:minSdkVersion="(\d+)"/)    || [])[1]) || 0;
 
   const permissions = [...xml.matchAll(/uses-permission[^>]+android:name="([^"]+)"/gi)].map(m => m[1]);
 
@@ -141,7 +148,7 @@ function parseManifest(xml) {
     ...extractComponents(xml, 'Provider', 'provider'),
   ];
 
-  return { components, pkg, permissions, allowBackup, debuggable, networkSecConfig, clearTextTraffic };
+  return { components, pkg, permissions, allowBackup, debuggable, networkSecConfig, clearTextTraffic, targetSdk, minSdk };
 }
 
 /**

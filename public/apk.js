@@ -63,10 +63,6 @@ const APKLoader = (() => {
     prog('Reading binary manifest…');
     const manifestBytes = await manifestFile.async('uint8array');
 
-    // Debug: log first bytes
-    console.log('[APKLoader] Manifest first 16 bytes:', Array.from(manifestBytes.slice(0, 16)).map(b => '0x' + b.toString(16).padStart(2,'0')).join(' '));
-    console.log('[APKLoader] Manifest size:', manifestBytes.byteLength, 'bytes');
-
     prog('Decoding AXML binary format…');
     let xml;
     try {
@@ -75,8 +71,6 @@ const APKLoader = (() => {
       console.error('[APKLoader] AXML parse error:', e);
       throw new Error('Failed to decode manifest: ' + e.message);
     }
-
-    console.log('[APKLoader] Decoded XML preview:\n', xml.substring(0, 500));
 
     // Lib architectures
     const archs = [...new Set(nativeLibs.map(f => f.split('/')[1]).filter(Boolean))];

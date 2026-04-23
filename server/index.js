@@ -1,89 +1,110 @@
-/**
- * server/index.js — Express server
- *
- * - Serves the static frontend from /public
- * - Proxies AI requests to Anthropic so the API key never reaches the browser
- *
- * Usage:
- *   ANTHROPIC_API_KEY=sk-ant-... node server/index.js
- *   # or
- *   npm start
- */
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const express = require('express');
-const path    = require('path');
 const https   = require('https');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const KEY  = process.env.ANTHROPIC_API_KEY || '';
+
+// Support Groq (preferred, free) or Gemini as fallback
+const GROQ_KEY   = process.env.GROQ_API_KEY   || '';
+const GEMINI_KEY = process.env.GEMINI_API_KEY  || '';
+const HAS_KEY    = Boolean(GROQ_KEY || GEMINI_KEY);
 
 app.use(express.json());
 
 // ── Serve static files ────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// ── Config endpoint (expose safe config to the browser) ───────────────────────
+// ── Config endpoint ───────────────────────────────────────────────────────────
 app.get('/config', (_req, res) => {
   res.json({
-    hasKey: Boolean(KEY),
-    // Never send the actual key — the proxy handles auth
+    hasKey:   HAS_KEY,
+    provider: GROQ_KEY ? 'groq' : GEMINI_KEY ? 'gemini' : 'none',
   });
 });
 
-// ── Proxy endpoint ────────────────────────────────────────────────────────────
-app.post('/api/analyze', (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
-  if (!KEY)    return res.status(503).json({ error: 'ANTHROPIC_API_KEY not set on the server' });
+// ── Helper: make HTTPS request ────────────────────────────────────────────────
+function httpsPost(options, body) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, r => {
+      let data = '';
+      r.on('data', c => (data += c));
+      r.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error('Invalid JSON from API')); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
 
+// ── Groq provider (llama-3.3-70b) ────────────────────────────────────────────
+async function callGroq(prompt) {
   const body = JSON.stringify({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
+    model:       'llama-3.3-70b-versatile',
+    max_tokens:  2048,
+    temperature: 0.4,
     messages: [{ role: 'user', content: prompt }],
   });
-
-  const options = {
-    hostname: 'api.anthropic.com',
-    path: '/v1/messages',
-    method: 'POST',
+  const data = await httpsPost({
+    hostname: 'api.groq.com',
+    path:     '/openai/v1/chat/completions',
+    method:   'POST',
     headers: {
-      'Content-Type':      'application/json',
-      'Content-Length':    Buffer.byteLength(body),
-      'x-api-key':         KEY,
-      'anthropic-version': '2023-06-01',
+      'Content-Type':   'application/json',
+      'Content-Length': Buffer.byteLength(body),
+      'Authorization':  `Bearer ${GROQ_KEY}`,
     },
-  };
+  }, body);
+  if (data.error) throw new Error(data.error.message || 'Groq error');
+  return data.choices?.[0]?.message?.content || '';
+}
 
-  const apiReq = https.request(options, apiRes => {
-    let data = '';
-    apiRes.on('data', chunk => (data += chunk));
-    apiRes.on('end', () => {
-      try {
-        const parsed = JSON.parse(data);
-        const text   = (parsed.content || []).map(b => b.text || '').join('');
-        res.json({ text });
-      } catch (e) {
-        res.status(500).json({ error: 'Failed to parse Anthropic response' });
-      }
-    });
+// ── Gemini provider (fallback) ────────────────────────────────────────────────
+async function callGemini(prompt) {
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 2048, temperature: 0.4 },
   });
+  const data = await httpsPost({
+    hostname: 'generativelanguage.googleapis.com',
+    path:     `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_KEY}`,
+    method:   'POST',
+    headers: {
+      'Content-Type':   'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    },
+  }, body);
+  if (data.error) throw new Error(data.error.message || 'Gemini error');
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
 
-  apiReq.on('error', err => res.status(500).json({ error: err.message }));
-  apiReq.write(body);
-  apiReq.end();
+// ── Proxy endpoint ────────────────────────────────────────────────────────────
+app.post('/api/analyze', async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt)  return res.status(400).json({ error: 'Missing prompt' });
+  if (!HAS_KEY) return res.status(503).json({ error: 'No AI API key configured. Set GROQ_API_KEY or GEMINI_API_KEY in .env' });
+
+  try {
+    const text = GROQ_KEY ? await callGroq(prompt) : await callGemini(prompt);
+    res.json({ text });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n⬡  Android Attack Surface Mapper`);
   console.log(`   http://localhost:${PORT}`);
-  if (!KEY) {
-    console.log('\n   ⚠️  ANTHROPIC_API_KEY is not set.');
-    console.log('   AI analysis will not work until you set it:\n');
-    console.log('   export ANTHROPIC_API_KEY=sk-ant-...');
-    console.log('   npm start\n');
-  } else {
-    console.log('   API key detected — AI analysis enabled ✓\n');
+  if (GROQ_KEY)        console.log('   Groq (llama-3.3-70b) — AI analysis enabled ✓\n');
+  else if (GEMINI_KEY) console.log('   Gemini — AI analysis enabled ✓\n');
+  else {
+    console.log('\n   ⚠️  No AI key configured.');
+    console.log('   Set GROQ_API_KEY=gsk_... in .env for free AI analysis\n');
   }
 });
