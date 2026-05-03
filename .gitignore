@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# React build output (generated — run `npm run build` to regenerate)
+public-react/
+
 # Environment variables — NEVER commit your API key
 .env
 

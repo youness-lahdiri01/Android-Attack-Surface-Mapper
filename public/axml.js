@@ -1,39 +1,4 @@
-/**
- * axml.js — Android Binary XML parser v6 — AOSP-correct layout
- *
- * REAL chunk layout for RES_XML_START_ELEMENT:
- *   [chunk header]  8 bytes: type(u16) headerSize(u16) chunkSize(u32)
- *   [ResXMLTree_node] 8 bytes: lineNumber(u32) comment(i32)
- *   [ResXMLTree_attrExt] 20 bytes:
- *       ns(i32+4) name(u32+8) attrStart(u16+12) attrSize(u16+14)
- *       attrCount(u16+16) idAttr(u16+18) classAttr(u16+20) styleAttr(u16+22)
- *   [attrs] each attrSize bytes (usually 20):
- *       ns(i32) name(u32) rawValue(i32) size(u16) res0(u8) dataType(u8) data(u32)
- *
- * Absolute positions from chunk start (pos):
- *   node.lineNumber  = pos + 8
- *   node.comment     = pos + 12
- *   ext.ns           = pos + 16
- *   ext.name         = pos + 20
- *   ext.attrStart    = pos + 24   (relative to ext start = pos+16)
- *   ext.attrSize     = pos + 26
- *   ext.attrCount    = pos + 28
- *   first attr       = pos + 16 + attrStart
- *
- * RES_XML_END_ELEMENT:
- *   [chunk header] 8 bytes
- *   [ResXMLTree_node] 8 bytes: lineNumber(u32) comment(i32)
- *   [ResXMLTree_endElementExt]:
- *       ns(i32) = pos+16
- *       name(u32) = pos+20
- *
- * RES_XML_START_NAMESPACE / END_NAMESPACE:
- *   [chunk header] 8 bytes
- *   [ResXMLTree_node] 8 bytes
- *   [ResXMLTree_namespaceExt]:
- *       prefix(u32) = pos+16
- *       uri(u32)    = pos+20
- */
+
 const AXML = (() => {
   const RES_STRING_POOL_TYPE    = 0x0001;
   const RES_XML_START_NAMESPACE = 0x0100;

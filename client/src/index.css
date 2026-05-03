@@ -1,0 +1,223 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-card: #1c2128;
+  --color-card-hover: #21262d;
+  --color-t1: #e6edf3;
+  --color-t2: #8b949e;
+  --color-t3: #6e7681;
+  --color-b1: rgba(255,255,255,0.08);
+  --color-b2: rgba(255,255,255,0.04);
+  --glass-bg: rgba(22, 27, 34, 0.85);
+  --glass-light-bg: rgba(33, 38, 45, 0.7);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-light-border: rgba(255,255,255,0.06);
+}
+
+html.light {
+  color-scheme: light;
+  --color-bg: #f0f6ff;
+  --color-surface: #ffffff;
+  --color-card: #f6f8fa;
+  --color-card-hover: #eef1f5;
+  --color-t1: #1c2128;
+  --color-t2: #57606a;
+  --color-t3: #8c959f;
+  --color-b1: rgba(0,0,0,0.1);
+  --color-b2: rgba(0,0,0,0.05);
+  --glass-bg: rgba(255, 255, 255, 0.88);
+  --glass-light-bg: rgba(246, 248, 250, 0.85);
+  --glass-border: rgba(0,0,0,0.1);
+  --glass-light-border: rgba(0,0,0,0.07);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-t1);
+  font-family: 'Inter', -apple-system, sans-serif;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Glass cards */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.glass-light {
+  background: var(--glass-light-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-light-border);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+/* Neon glow effects */
+.glow-blue  { box-shadow: 0 0 12px rgba(88, 166, 255, 0.35), 0 0 24px rgba(88, 166, 255, 0.15); }
+.glow-cyan  { box-shadow: 0 0 12px rgba(0, 212, 255, 0.35),  0 0 24px rgba(0, 212, 255, 0.15); }
+.glow-red   { box-shadow: 0 0 12px rgba(255, 59, 92, 0.4),   0 0 24px rgba(255, 59, 92, 0.2); }
+.glow-green { box-shadow: 0 0 12px rgba(63, 185, 80, 0.35),  0 0 24px rgba(63, 185, 80, 0.15); }
+
+/* Drop zone animated border */
+@property --dz-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes dz-rotate {
+  to { --dz-angle: 360deg; }
+}
+
+.drop-zone-border {
+  position: relative;
+}
+.drop-zone-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--dz-angle), #00d4ff 0%, #a371f7 30%, #ff3b5c 60%, #00d4ff 100%);
+  animation: dz-rotate 4s linear infinite;
+  z-index: -1;
+}
+.drop-zone-border::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-surface);
+  z-index: -1;
+}
+
+/* Findings grid horizontal scroll */
+.findings-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+}
+.findings-scroll::-webkit-scrollbar { height: 3px; }
+.finding-card-wrap { scroll-snap-align: start; flex-shrink: 0; }
+
+/* Type badges */
+.badge-activity { background: rgba(88, 166, 255, 0.12); color: #58a6ff; border: 1px solid rgba(88,166,255,0.3); }
+.badge-service  { background: rgba(163,113,247, 0.12); color: #a371f7; border: 1px solid rgba(163,113,247,0.3); }
+.badge-receiver { background: rgba(210,153,34,  0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
+.badge-provider { background: rgba(255,59,92,   0.12); color: #ff3b5c; border: 1px solid rgba(255,59,92,0.3); }
+
+/* Severity colors */
+.sev-critical { --sev: #ff3b5c; }
+.sev-high     { --sev: #ff9500; }
+.sev-medium   { --sev: #ffd60a; }
+.sev-low      { --sev: #3fb950; }
+
+/* Scan loading bar */
+@keyframes scan-pulse {
+  0%, 100% { opacity: 0.3; transform: scaleX(0.3); }
+  50%       { opacity: 1;   transform: scaleX(1); }
+}
+.scan-bar { animation: scan-pulse 1.5s ease-in-out infinite; transform-origin: left; }
+
+/* Tooltip */
+.tooltip {
+  position: absolute;
+  z-index: 100;
+  background: var(--color-card-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--color-t1);
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+/* AI Panel prose */
+.ai-prose strong { color: #00d4ff; }
+.ai-prose ol { padding-left: 16px; }
+.ai-prose li { margin: 4px 0; }
+.ai-prose p { margin: 6px 0; }
+
+/* ── Attack graph edge animations ──────────────────────────────── */
+
+/* Exposed (dangerous) edges — red flowing dash */
+@keyframes dash-critical {
+  from { stroke-dashoffset: 28; }
+  to   { stroke-dashoffset: 0; }
+}
+/* Regular exposed edges — orange flowing */
+@keyframes dash-exposed {
+  from { stroke-dashoffset: 20; }
+  to   { stroke-dashoffset: 0; }
+}
+/* Intent edges — blue flowing reverse */
+@keyframes dash-intent {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -28; }
+}
+/* Deeplink edges — gold pulsing */
+@keyframes dash-deeplink {
+  from { stroke-dashoffset: 12; }
+  to   { stroke-dashoffset: 0; }
+}
+
+svg .edge-critical { animation: dash-critical 1.0s linear infinite; }
+svg .edge-exposed  { animation: dash-exposed  1.8s linear infinite; }
+svg .edge-intent   { animation: dash-intent   2.5s linear infinite; }
+svg .edge-deeplink { animation: dash-deeplink 1.2s linear infinite; }
+
+/* ── Critical finding card accent bar pulse ─────────────────────── */
+@keyframes critical-bar-pulse {
+  0%, 100% { box-shadow: 0 0 6px #ff3b5c; opacity: 1; }
+  50%       { box-shadow: 0 0 14px #ff3b5c, 0 0 28px rgba(255,59,92,0.3); opacity: 0.8; }
+}
+.critical-bar { animation: critical-bar-pulse 1.8s ease-in-out infinite; }
+
+/* ── Neon line sweep (scan animation) ──────────────────────────── */
+@keyframes neon-sweep {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateX(100vw); opacity: 0; }
+}
+
+/* ── Chat textarea auto-resize helper ──────────────────────────── */
+textarea { field-sizing: content; }
+
+/* ── Button hover glow utilities ───────────────────────────────── */
+.btn-neon-blue {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.btn-neon-blue:hover:not(:disabled) {
+  box-shadow: 0 0 16px rgba(0,212,255,0.3);
+  border-color: rgba(0,212,255,0.6);
+}
+.btn-neon-purple {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.btn-neon-purple:hover:not(:disabled) {
+  box-shadow: 0 0 16px rgba(163,113,247,0.3);
+  border-color: rgba(163,113,247,0.6);
+}

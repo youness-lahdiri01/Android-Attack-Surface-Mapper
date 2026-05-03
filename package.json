@@ -5,7 +5,12 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "nodemon server/index.js"
+    "dev": "nodemon server/index.js",
+    "dev:client": "cd client && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:client\"",
+    "build": "cd client && npm run build",
+    "build:start": "npm run build && npm start",
+    "client:install": "cd client && npm install"
   },
   "keywords": [
     "android",
@@ -24,6 +29,7 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "nodemon": "^3.0.1"
   },
   "engines": {

@@ -15,7 +15,13 @@ const HAS_KEY    = Boolean(GROQ_KEY || GEMINI_KEY);
 app.use(express.json());
 
 // ── Serve static files ────────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// Serve the built React app (client/dist → public-react) in production.
+// Fall back to legacy public/ directory if the React build doesn't exist yet.
+const reactBuild = path.join(__dirname, '..', 'public-react');
+const legacyDir  = path.join(__dirname, '..', 'public');
+const fs = require('fs');
+const staticDir = fs.existsSync(reactBuild) ? reactBuild : legacyDir;
+app.use(express.static(staticDir));
 
 // ── Config endpoint ───────────────────────────────────────────────────────────
 app.get('/config', (_req, res) => {
@@ -95,6 +101,13 @@ app.post('/api/analyze', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── SPA fallback (must be last) ───────────────────────────────────────────────
+app.get('*', (_req, res) => {
+  const index = path.join(staticDir, 'index.html');
+  if (fs.existsSync(index)) res.sendFile(index);
+  else res.status(404).send('Build not found. Run: cd client && npm run build');
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
