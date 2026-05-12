@@ -351,4 +351,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-*Support: younesslahdiri01@gmail.com*
+*Support: aminekabbaj144@gmail.com*
