@@ -336,7 +336,7 @@ If you use this tool in academic work, please cite:
 @software{lahdiri2025androidasm,
   author    = {Lahdiri, Youness and Kabbaj, Amine},
   title     = {Android Attack Surface Mapper v2.0.0},
-  year      = {2025},
+  year      = {2026},
   publisher = {Zenodo},
   doi       = {10.5281/zenodo.20090644},
   url       = {https://github.com/youness-lahdiri01/Android-Attack-Surface-Mapper}
