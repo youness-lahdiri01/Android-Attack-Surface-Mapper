@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as d3 from 'd3'
 import { Network, ZoomIn, ZoomOut, Maximize2, X, Lock, Unlock, Wifi } from 'lucide-react'
 import { calcComponentRisk, riskLevel } from '../lib/parser.js'
+
+// ── Static color maps ────────────────────────────────────────────────────────
 
 const TYPE_COLOR = {
   Activity: '#58a6ff',
@@ -15,19 +17,61 @@ const TYPE_COLOR = {
 const TYPE_LABEL = { Activity: 'A', Service: 'S', Receiver: 'R', Provider: 'P', app: '⬡' }
 const SEV_COLOR  = { critical: '#ff3b5c', high: '#ff9500', medium: '#ffd60a', low: '#3fb950' }
 
+// ── Theme tokens ─────────────────────────────────────────────────────────────
+
+function getTheme(isDark) {
+  return isDark ? {
+    containerBg:   'rgba(13,17,23,0.92)',
+    headerBg:      'rgba(13,17,23,0.85)',
+    headerBorder:  'rgba(255,255,255,0.06)',
+    gridStroke:    'rgba(255,255,255,0.022)',
+    gridDot:       'rgba(0,212,255,0.16)',
+    nodeLabelFill: 'rgba(255,255,255,0.45)',
+    tooltipBg:     '#1c2128',
+    tooltipDivider:'rgba(255,255,255,0.06)',
+    riskBarBg:     'rgba(255,255,255,0.06)',
+    linkExposed:   'rgba(255,59,92,0.55)',
+    linkSafe:      'rgba(255,149,0,0.45)',
+    linkIntent:    'rgba(88,166,255,0.3)',
+    linkDeeplink:  'rgba(210,153,34,0.5)',
+  } : {
+    containerBg:   'var(--color-surface)',
+    headerBg:      'rgba(246,248,250,0.9)',
+    headerBorder:  'rgba(0,0,0,0.08)',
+    gridStroke:    'rgba(0,0,0,0.05)',
+    gridDot:       'rgba(0,0,0,0.1)',
+    nodeLabelFill: 'rgba(0,0,0,0.5)',
+    tooltipBg:     'var(--color-card)',
+    tooltipDivider:'rgba(0,0,0,0.08)',
+    riskBarBg:     'rgba(0,0,0,0.07)',
+    linkExposed:   'rgba(200,30,55,0.6)',
+    linkSafe:      'rgba(180,90,0,0.5)',
+    linkIntent:    'rgba(40,110,220,0.4)',
+    linkDeeplink:  'rgba(155,100,0,0.55)',
+  }
+}
+
+function getLinkStroke(d, theme) {
+  if (d.type === 'exposed') return d.dangerous ? theme.linkExposed : theme.linkSafe
+  if (d.type === 'deeplink') return theme.linkDeeplink
+  return theme.linkIntent
+}
+
+// ── Graph data builder ───────────────────────────────────────────────────────
+
 function buildGraphData(scanState) {
   const { parsed } = scanState
   const nodes = [
     { id: '__app__', label: parsed.pkg.split('.').pop(), type: 'app', risk: 0, exported: false },
     ...parsed.components.map(c => ({
-      id: c.name,
-      label: c.name.replace(/^.*\./, ''),
-      type: c.type,
-      risk: calcComponentRisk(c),
+      id:       c.name,
+      label:    c.name.replace(/^.*\./, ''),
+      type:     c.type,
+      risk:     calcComponentRisk(c),
       exported: c.inferredExported,
-      perm: c.perm,
-      actions: c.actions,
-      schemes: c.schemes,
+      perm:     c.perm,
+      actions:  c.actions,
+      schemes:  c.schemes,
       component: c,
     })),
   ]
@@ -73,6 +117,7 @@ function getConnectedIds(selectedId, links) {
   return ids
 }
 
+// Pulsating danger ring for unguarded exported nodes
 function pulsate(sel) {
   if (sel.empty()) return
   sel.each(function() {
@@ -88,7 +133,21 @@ function pulsate(sel) {
   })
 }
 
-// Curved path between two nodes
+// Breathing ambient glow for the central app node
+function ambientPulse(sel) {
+  if (sel.empty()) return
+  sel.each(function() {
+    const el = d3.select(this)
+    function run() {
+      el.attr('r', 44).attr('opacity', 0.85)
+        .transition().duration(2600).ease(d3.easeSinInOut)
+        .attr('r', 76).attr('opacity', 0)
+        .on('end', run)
+    }
+    run()
+  })
+}
+
 function makePath(d) {
   const sx = d.source.x, sy = d.source.y
   const tx = d.target.x, ty = d.target.y
@@ -98,31 +157,40 @@ function makePath(d) {
   return `M${sx},${sy}Q${mx},${my},${tx},${ty}`
 }
 
-export default function AttackGraph({ scanState, highlightedNode, onHighlight }) {
-  const svgRef    = useRef(null)
-  const zoomRef   = useRef(null)
-  const nodesRef  = useRef(null)
-  const linksRef  = useRef(null)
-  const linksData = useRef([])
-  const [tooltip, setTooltip] = useState(null)
+// ── Component ────────────────────────────────────────────────────────────────
+
+export default function AttackGraph({ scanState, highlightedNode, onHighlight, isDark }) {
+  const svgRef     = useRef(null)
+  const zoomRef    = useRef(null)
+  const nodesRef   = useRef(null)
+  const linksRef   = useRef(null)
+  const linksData  = useRef([])
+  const isDarkRef  = useRef(isDark)
+  const themedRefs = useRef({ gridLines: null, nodeLabels: null, gridDots: null })
+
+  const [tooltip,   setTooltip]   = useState(null)
   const [focusInfo, setFocusInfo] = useState(null)
 
+  isDarkRef.current = isDark
+
+  // ── Effect 1: Build graph (runs when scanState changes) ────────────────────
   useEffect(() => {
     if (!scanState || !svgRef.current) return
 
+    const theme  = getTheme(isDarkRef.current)
     const { nodes, links } = buildGraphData(scanState)
     linksData.current = links
-    const el    = svgRef.current
+
+    const el     = svgRef.current
     const width  = el.clientWidth  || 600
     const height = el.clientHeight || 400
 
     const svg = d3.select(el)
     svg.selectAll('*').remove()
 
-    /* ── Defs ─────────────────────────────────────────────────── */
+    /* ── Defs ────────────────────────────────────────────────── */
     const defs = svg.append('defs')
 
-    // Glow filters
     const addGlow = (id, color, blur = 4) => {
       const f = defs.append('filter').attr('id', id)
         .attr('x', '-60%').attr('y', '-60%').attr('width', '220%').attr('height', '220%')
@@ -131,31 +199,47 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
       m.append('feMergeNode').attr('in', 'blur')
       m.append('feMergeNode').attr('in', 'SourceGraphic')
     }
-    Object.entries(TYPE_COLOR).forEach(([type, color]) => addGlow(`glow-${type}`, color, type === 'app' ? 7 : 3))
+    Object.entries(TYPE_COLOR).forEach(([type]) => addGlow(`glow-${type}`, TYPE_COLOR[type], type === 'app' ? 9 : 3))
     addGlow('glow-critical', '#ff3b5c', 8)
 
-    // Arrow markers per edge type
     const addMarker = (id, color, refX = 20) => {
       defs.append('marker').attr('id', id)
         .attr('viewBox', '0 -4 8 8').attr('refX', refX).attr('refY', 0)
         .attr('markerWidth', 5).attr('markerHeight', 5).attr('orient', 'auto')
         .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', color)
     }
-    addMarker('arrow-exposed',  'rgba(255,59,92,0.6)')
-    addMarker('arrow-intent',   'rgba(88,166,255,0.5)')
-    addMarker('arrow-deeplink', 'rgba(210,153,34,0.7)')
+    addMarker('arrow-exposed',  isDarkRef.current ? 'rgba(255,59,92,0.6)'   : 'rgba(200,30,55,0.7)')
+    addMarker('arrow-intent',   isDarkRef.current ? 'rgba(88,166,255,0.5)'  : 'rgba(40,110,220,0.55)')
+    addMarker('arrow-deeplink', isDarkRef.current ? 'rgba(210,153,34,0.7)'  : 'rgba(155,100,0,0.65)')
 
-    /* ── Subtle grid background ───────────────────────────────── */
+    // App node ambient radial gradient
+    const appGrad = defs.append('radialGradient').attr('id', 'app-ambient-grad')
+      .attr('cx', '50%').attr('cy', '50%').attr('r', '50%')
+    appGrad.append('stop').attr('offset', '0%').attr('stop-color', TYPE_COLOR.app).attr('stop-opacity', 0.22)
+    appGrad.append('stop').attr('offset', '100%').attr('stop-color', TYPE_COLOR.app).attr('stop-opacity', 0)
+
+    /* ── Grid ────────────────────────────────────────────────── */
     const gridSize = 40
-    const gridG = svg.append('g').attr('class', 'grid').attr('pointer-events', 'none')
+    const gridG    = svg.append('g').attr('class', 'graph-grid').attr('pointer-events', 'none')
+
     for (let x = 0; x < width; x += gridSize)
       gridG.append('line').attr('x1', x).attr('y1', 0).attr('x2', x).attr('y2', height)
-        .attr('stroke', 'rgba(255,255,255,0.018)').attr('stroke-width', 0.5)
+        .attr('stroke', theme.gridStroke).attr('stroke-width', 0.5)
     for (let y = 0; y < height; y += gridSize)
       gridG.append('line').attr('x1', 0).attr('y1', y).attr('x2', width).attr('y2', y)
-        .attr('stroke', 'rgba(255,255,255,0.018)').attr('stroke-width', 0.5)
+        .attr('stroke', theme.gridStroke).attr('stroke-width', 0.5)
 
-    /* ── Zoom ─────────────────────────────────────────────────── */
+    themedRefs.current.gridLines = gridG.selectAll('line')
+
+    // Intersection dots — cyber grid accent
+    for (let x = 0; x <= width; x += gridSize)
+      for (let y = 0; y <= height; y += gridSize)
+        gridG.append('circle').attr('cx', x).attr('cy', y).attr('r', 1)
+          .attr('fill', theme.gridDot)
+
+    themedRefs.current.gridDots = gridG.selectAll('circle')
+
+    /* ── Zoom ────────────────────────────────────────────────── */
     const zoom = d3.zoom().scaleExtent([0.25, 4])
       .on('zoom', e => g.attr('transform', e.transform))
     zoomRef.current = zoom
@@ -164,24 +248,20 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
 
     const g = svg.append('g')
 
-    /* ── Force simulation ─────────────────────────────────────── */
+    /* ── Force simulation ────────────────────────────────────── */
     const sim = d3.forceSimulation(nodes)
-      .force('link',  d3.forceLink(links).id(d => d.id).distance(d => d.type === 'exposed' ? 130 : 100))
-      .force('charge', d3.forceManyBody().strength(-400))
-      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('link',      d3.forceLink(links).id(d => d.id).distance(d => d.type === 'exposed' ? 130 : 100))
+      .force('charge',    d3.forceManyBody().strength(-400))
+      .force('center',    d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide(36))
 
-    /* ── Links (paths for curves) ─────────────────────────────── */
+    /* ── Links ───────────────────────────────────────────────── */
     const linkG = g.append('g')
-    const link = linkG.selectAll('path')
+    const link  = linkG.selectAll('path')
       .data(links).join('path')
       .attr('fill', 'none')
       .attr('stroke-width', d => d.type === 'exposed' ? 1.5 : 1)
-      .attr('stroke', d =>
-        d.type === 'exposed' && d.dangerous ? 'rgba(255,59,92,0.55)'
-        : d.type === 'exposed'              ? 'rgba(255,149,0,0.45)'
-        : d.type === 'deeplink'             ? 'rgba(210,153,34,0.5)'
-        :                                     'rgba(88,166,255,0.3)')
+      .attr('stroke', d => getLinkStroke(d, theme))
       .attr('stroke-dasharray', d => d.type === 'exposed' ? '7 3' : d.type === 'deeplink' ? '3 3' : '5 5')
       .attr('class', d =>
         d.type === 'exposed' && d.dangerous ? 'edge-critical'
@@ -189,14 +269,15 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
         : d.type === 'deeplink'             ? 'edge-deeplink'
         :                                     'edge-intent')
       .attr('marker-end', d =>
-        d.type === 'exposed'  ? 'url(#arrow-exposed)'
+        d.type === 'exposed'    ? 'url(#arrow-exposed)'
         : d.type === 'deeplink' ? 'url(#arrow-deeplink)'
         :                         'url(#arrow-intent)')
 
     linksRef.current = link
 
-    /* ── Nodes ────────────────────────────────────────────────── */
-    const node = g.append('g').selectAll('g')
+    /* ── Nodes ───────────────────────────────────────────────── */
+    // Outer group: managed by D3 tick for position + opacity for highlight
+    const nodeG = g.append('g').selectAll('g')
       .data(nodes).join('g')
       .attr('cursor', 'pointer')
       .call(d3.drag()
@@ -213,14 +294,26 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
       .on('mouseover', (e, d) => {
         const rect = el.getBoundingClientRect()
         setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, node: d })
+        // Scale inner visual group for hover effect (doesn't conflict with tick translate)
+        d3.select(e.currentTarget).select('.node-viz')
+          .transition().duration(160).ease(d3.easeBackOut.overshoot(1.8))
+          .attr('transform', d.type === 'app' ? 'scale(1.1)' : 'scale(1.22)')
       })
-      .on('mouseout', () => setTooltip(null))
+      .on('mouseout', (e) => {
+        setTooltip(null)
+        d3.select(e.currentTarget).select('.node-viz')
+          .transition().duration(200).ease(d3.easeQuadOut)
+          .attr('transform', 'scale(1)')
+      })
 
-    nodesRef.current = node
+    nodesRef.current = nodeG
+
+    // Inner visual group — handles hover scale independently of position
+    const node = nodeG.append('g').attr('class', 'node-viz')
 
     // Pulse ring for critical unguarded exported nodes
-    const criticalNodes = node.filter(d => d.exported && !d.perm && d.type !== 'app')
-    criticalNodes.append('circle')
+    node.filter(d => d.exported && !d.perm && d.type !== 'app')
+      .append('circle')
       .attr('r', 22).attr('data-base-r', 22)
       .attr('fill', 'none')
       .attr('stroke', '#ff3b5c')
@@ -228,7 +321,15 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
       .attr('pointer-events', 'none')
       .call(pulsate)
 
-    // Outer ring for all exported nodes
+    // Ambient breathing glow for central app node
+    node.filter(d => d.type === 'app')
+      .append('circle')
+      .attr('r', 44)
+      .attr('fill', 'url(#app-ambient-grad)')
+      .attr('pointer-events', 'none')
+      .call(ambientPulse)
+
+    // Outer ring for exported nodes
     node.filter(d => d.exported || d.type === 'app')
       .append('circle')
       .attr('r', d => d.type === 'app' ? 30 : 22)
@@ -256,24 +357,48 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
       .attr('font-family', 'JetBrains Mono, monospace').attr('font-weight', '700')
       .attr('fill', d => TYPE_COLOR[d.type]).attr('pointer-events', 'none')
 
-    // Label below node
-    node.append('text')
+    // Label below node (theme-colored)
+    const nodeLabels = node.append('text')
       .text(d => d.label.length > 10 ? d.label.slice(0, 10) + '…' : d.label)
       .attr('text-anchor', 'middle')
       .attr('y', d => d.type === 'app' ? 36 : 28)
       .attr('font-size', '8px').attr('font-family', 'JetBrains Mono, monospace')
-      .attr('fill', 'rgba(255,255,255,0.4)').attr('pointer-events', 'none')
+      .attr('fill', theme.nodeLabelFill)
+      .attr('pointer-events', 'none')
 
-    /* ── Tick ─────────────────────────────────────────────────── */
+    themedRefs.current.nodeLabels = nodeLabels
+
+    /* ── Tick ────────────────────────────────────────────────── */
     sim.on('tick', () => {
       link.attr('d', makePath)
-      node.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
+      nodeG.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`)
     })
 
     return () => { sim.stop(); svg.on('click.deselect', null) }
-  }, [scanState])
+  }, [scanState]) // intentionally excludes isDark — theme updates go through Effect 2
 
-  /* ── Focus effect (highlight + dim) ─────────────────────────── */
+  // ── Effect 2: Update colors on theme toggle (no simulation restart) ─────────
+  useEffect(() => {
+    const { gridLines, nodeLabels, gridDots } = themedRefs.current
+    const link = linksRef.current
+    if (!gridLines || !nodeLabels || !link) return
+
+    const theme = getTheme(isDark)
+
+    gridLines.transition().duration(280)
+      .attr('stroke', theme.gridStroke)
+
+    gridDots?.transition().duration(280)
+      .attr('fill', theme.gridDot)
+
+    nodeLabels.transition().duration(280)
+      .attr('fill', theme.nodeLabelFill)
+
+    link.transition().duration(280)
+      .attr('stroke', d => getLinkStroke(d, theme))
+  }, [isDark])
+
+  // ── Effect 3: Focus highlight/dim ───────────────────────────────────────────
   useEffect(() => {
     const nodesSel = nodesRef.current
     const linksSel = linksRef.current
@@ -306,18 +431,28 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
     d3.select(svgRef.current).transition().duration(350).call(zoomRef.current.transform, d3.zoomIdentity)
   }
 
+  const theme = getTheme(isDark)
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ delay: 0.2 }}
       className="flex-1 relative rounded-xl border border-b1 overflow-hidden"
-      style={{ background: 'rgba(13,17,23,0.9)' }}
+      style={{
+        background:  theme.containerBg,
+        transition:  'background 0.25s ease',
+      }}
     >
       {/* Header bar */}
       <div
         className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 z-10"
-        style={{ background: 'rgba(13,17,23,0.8)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        style={{
+          background:    theme.headerBg,
+          backdropFilter:'blur(8px)',
+          borderBottom:  `1px solid ${theme.headerBorder}`,
+          transition:    'background 0.25s ease, border-color 0.25s ease',
+        }}
       >
         <div className="flex items-center gap-2">
           <Network size={11} className="text-neon-cyan" />
@@ -347,11 +482,11 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
           ))}
           <div className="w-px h-3 bg-b1 mx-0.5" />
           <div className="flex items-center gap-1">
-            <div className="w-3 border-t border-dashed" style={{ borderColor: 'rgba(255,59,92,0.6)' }} />
+            <div className="w-3 border-t border-dashed" style={{ borderColor: theme.linkExposed }} />
             <span className="text-[9px] font-mono text-t3">exposed</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="w-3 border-t border-dashed" style={{ borderColor: 'rgba(88,166,255,0.5)' }} />
+            <div className="w-3 border-t border-dashed" style={{ borderColor: theme.linkIntent }} />
             <span className="text-[9px] font-mono text-t3">intent</span>
           </div>
         </div>
@@ -380,7 +515,12 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
           >
             <div
               className="rounded-lg p-2.5 min-w-[160px]"
-              style={{ background: '#1c2128', border: `1px solid ${TYPE_COLOR[tooltip.node.type]}40`, boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 16px ${TYPE_COLOR[tooltip.node.type]}20` }}
+              style={{
+                background:  theme.tooltipBg,
+                border:      `1px solid ${TYPE_COLOR[tooltip.node.type]}40`,
+                boxShadow:   `0 8px 32px rgba(0,0,0,0.25), 0 0 16px ${TYPE_COLOR[tooltip.node.type]}20`,
+                transition:  'background 0.25s ease',
+              }}
             >
               <div className="flex items-center gap-1.5 mb-1.5">
                 <div className="w-2 h-2 rounded-full" style={{ background: TYPE_COLOR[tooltip.node.type], boxShadow: `0 0 6px ${TYPE_COLOR[tooltip.node.type]}` }} />
@@ -411,12 +551,12 @@ export default function AttackGraph({ scanState, highlightedNode, onHighlight })
                     </div>
                   )}
                   {tooltip.node.risk > 0 && (
-                    <div className="mt-1 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="mt-1 pt-1" style={{ borderTop: `1px solid ${theme.tooltipDivider}` }}>
                       <div className="flex items-center justify-between text-[9px] font-mono">
                         <span className="text-t3">Risk</span>
                         <span style={{ color: SEV_COLOR[riskLevel(tooltip.node.risk)] }}>{tooltip.node.risk}/100</span>
                       </div>
-                      <div className="mt-0.5 h-1 rounded-full bg-white/5 overflow-hidden">
+                      <div className="mt-0.5 h-1 rounded-full overflow-hidden" style={{ background: theme.riskBarBg }}>
                         <div className="h-full rounded-full" style={{ width: `${tooltip.node.risk}%`, background: SEV_COLOR[riskLevel(tooltip.node.risk)] }} />
                       </div>
                     </div>

@@ -1,3 +1,7 @@
+import { buildNetSecFindings } from './netSecConfig.js'
+import { buildDexFindings } from './dexScanner.js'
+import { buildSigFindings, buildAssetsFindings } from './apkMeta.js'
+
 const SENSITIVE_NAME_PATTERNS = [
   /transfer/i, /payment/i, /admin/i, /root/i, /internal/i,
   /secret/i, /private/i, /wallet/i, /banking/i, /auth/i,
@@ -15,7 +19,7 @@ const DANGEROUS_PERMISSIONS = [
 ]
 
 export function buildFindings(data) {
-  const { components, allowBackup, debuggable, permissions, pkg, clearTextTraffic, targetSdk = 0 } = data
+  const { components, allowBackup, debuggable, permissions, pkg, clearTextTraffic, targetSdk = 0, netSec, dexHits, sigInfo, suspiciousAssets } = data
   const findings = []
 
   if (debuggable) {
@@ -123,6 +127,11 @@ export function buildFindings(data) {
         fix: 'Remove android:taskAffinity or set it to an empty string ("") to prevent task reparenting.',
       })
     })
+
+  findings.push(...buildNetSecFindings(netSec))
+  findings.push(...buildSigFindings(sigInfo))
+  findings.push(...buildDexFindings(dexHits))
+  findings.push(...buildAssetsFindings(suspiciousAssets))
 
   const order = { critical: 0, high: 1, medium: 2, low: 3 }
   findings.sort((a, b) => order[a.sev] - order[b.sev])

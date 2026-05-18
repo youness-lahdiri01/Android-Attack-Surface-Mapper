@@ -1,0 +1,9 @@
+node_modules
+client/node_modules
+public-react
+.git
+.gitignore
+.env
+.env.local
+.idea
+.claude

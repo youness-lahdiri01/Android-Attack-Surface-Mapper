@@ -1,5 +1,8 @@
 import JSZip from 'jszip'
 import { parseAXML } from './axml.js'
+import { parseNetworkSecurityConfig } from './netSecConfig.js'
+import { scanDexFiles } from './dexScanner.js'
+import { analyzeSignature, analyzeAssets } from './apkMeta.js'
 
 export async function loadAPK(file, onProgress = () => {}) {
   onProgress('Reading file…')
@@ -34,6 +37,30 @@ export async function loadAPK(file, onProgress = () => {}) {
 
   const archs = [...new Set(nativeLibs.map(f => f.split('/')[1]).filter(Boolean))]
 
+  onProgress('Scanning DEX bytecode for secrets…')
+  const dexHits = await scanDexFiles(zip)
+
+  onProgress('Analyzing APK signature…')
+  const sigInfo = analyzeSignature(allFiles, buffer)
+
+  onProgress('Checking for suspicious embedded files…')
+  const suspiciousAssets = analyzeAssets(allFiles)
+
+  onProgress('Scanning network security config…')
+  let netSec = null
+  const nsConfigMatch = xml.match(/networkSecurityConfig="@xml\/([^"]+)"/)
+  const nsConfigName  = nsConfigMatch ? nsConfigMatch[1] : 'network_security_config'
+  const nsConfigFile  = zip.file(`res/xml/${nsConfigName}.xml`)
+  if (nsConfigFile) {
+    try {
+      const bytes  = await nsConfigFile.async('uint8array')
+      const nsXml  = parseAXML(bytes)
+      netSec = parseNetworkSecurityConfig(nsXml)
+    } catch {
+      // not critical — skip on decode failure
+    }
+  }
+
   const apkInfo = {
     fileName:    file.name,
     fileSize:    (file.size / 1024 / 1024).toFixed(2) + ' MB',
@@ -44,5 +71,5 @@ export async function loadAPK(file, onProgress = () => {}) {
     totalFiles:  allFiles.length,
   }
 
-  return { xml, apkInfo }
+  return { xml, apkInfo, netSec, dexHits, sigInfo, suspiciousAssets }
 }

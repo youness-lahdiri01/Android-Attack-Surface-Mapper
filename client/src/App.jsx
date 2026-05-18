@@ -7,55 +7,115 @@ import RiskGauge from './components/RiskGauge.jsx'
 import AttackGraph from './components/AttackGraph.jsx'
 import FindingsGrid from './components/FindingsGrid.jsx'
 import AIPanel from './components/AIPanel.jsx'
+import HistoryPanel from './components/HistoryPanel.jsx'
 import { parseManifest, DEMO_XML } from './lib/parser.js'
 import { buildFindings, computeSurfaceScore } from './lib/findings.js'
 import { loadAPK } from './lib/apk.js'
 import { useTheme } from './hooks/useTheme.js'
+import { saveToHistory, loadHistory } from './lib/historyService.js'
+
+const SCAN_STEPS = [
+  'Extracting manifest…',
+  'Parsing components…',
+  'Running security checks…',
+  'Computing risk score…',
+  'Building attack graph…',
+]
 
 function ScanningOverlay() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-6 relative overflow-hidden">
-      {/* Background grid */}
+    <div className="flex-1 flex flex-col items-center justify-center gap-8 relative overflow-hidden">
+      {/* Subtle grid */}
       <div
-        className="absolute inset-0 opacity-5"
+        className="absolute inset-0"
         style={{
-          backgroundImage: 'linear-gradient(rgba(0,212,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.3) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
+          backgroundImage: 'linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px)',
+          backgroundSize: '44px 44px',
         }}
       />
 
-      {/* Scanner */}
-      <div className="relative">
+      {/* Radial ambient glow */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse 55% 55% at 50% 50%, rgba(0,212,255,0.04) 0%, transparent 70%)',
+        }}
+      />
+
+      {/* Scanner rings */}
+      <div className="relative flex items-center justify-center">
+        {/* Outer orbit */}
         <motion.div
-          className="w-24 h-24 rounded-full border-2 flex items-center justify-center"
-          style={{ borderColor: 'rgba(0,212,255,0.3)' }}
+          className="absolute w-36 h-36 rounded-full border"
+          style={{ borderColor: 'rgba(0,212,255,0.1)' }}
+          animate={{ rotate: -360 }}
+          transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+        />
+        {/* Spinning arc */}
+        <motion.div
+          className="absolute w-28 h-28 rounded-full"
+          style={{
+            border: '2px solid transparent',
+            borderTopColor: '#00d4ff',
+            borderRightColor: '#a371f7',
+            filter: 'drop-shadow(0 0 6px rgba(0,212,255,0.5))',
+          }}
           animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-        >
-          <div className="absolute inset-0 rounded-full border-2 border-transparent" style={{ borderTopColor: '#00d4ff', borderRightColor: '#a371f7' }} />
-        </motion.div>
+          transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+        />
+        {/* Pulse ring */}
         <motion.div
-          className="absolute inset-2 rounded-full border border-neon-cyan/20"
-          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
+          className="absolute w-20 h-20 rounded-full border"
+          style={{ borderColor: 'rgba(0,212,255,0.2)' }}
+          animate={{ scale: [1, 1.12, 1], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
         />
+        {/* Core */}
         <div
-          className="absolute inset-6 rounded-full"
-          style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.2)' }}
-        />
+          className="w-12 h-12 rounded-full flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(circle, rgba(0,212,255,0.15) 0%, rgba(0,212,255,0.04) 70%)',
+            border: '1px solid rgba(0,212,255,0.3)',
+            boxShadow: '0 0 24px rgba(0,212,255,0.2)',
+          }}
+        >
+          <motion.div
+            className="w-2 h-2 rounded-full bg-neon-cyan"
+            animate={{ opacity: [0.6, 1, 0.6], scale: [0.9, 1.1, 0.9] }}
+            transition={{ duration: 1.2, repeat: Infinity }}
+          />
+        </div>
       </div>
 
-      <div className="flex flex-col items-center gap-1">
-        <div className="text-neon-cyan font-mono font-bold text-sm tracking-widest">
-          ANALYZING ATTACK SURFACE
+      {/* Status text */}
+      <div className="flex flex-col items-center gap-2">
+        <div
+          className="text-xs font-mono font-bold tracking-[0.22em] uppercase"
+          style={{ color: '#00d4ff', textShadow: '0 0 16px rgba(0,212,255,0.5)' }}
+        >
+          Analyzing Attack Surface
         </div>
         <motion.div
-          animate={{ opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
-          className="text-t3 text-xs font-mono"
+          key="step"
+          animate={{ opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 2, repeat: Infinity, times: [0, 0.1, 0.85, 1] }}
+          className="text-t3 text-[11px] font-mono"
         >
           Parsing manifest and running security checks…
         </motion.div>
+      </div>
+
+      {/* Progress bar */}
+      <div
+        className="w-48 h-[2px] rounded-full overflow-hidden"
+        style={{ background: 'rgba(255,255,255,0.06)' }}
+      >
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: 'linear-gradient(90deg, #00d4ff, #a371f7)', transformOrigin: 'left' }}
+          animate={{ scaleX: [0.1, 0.9, 0.2, 0.7, 0.4, 0.95] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+        />
       </div>
     </div>
   )
@@ -79,6 +139,8 @@ export default function App() {
   const [highlightedNode, setHighlightedNode] = useState(null)
   const [aiPanelOpen,     setAiPanelOpen]     = useState(false)
   const [aiHasKey,        setAiHasKey]        = useState(false)
+  const [historyOpen,     setHistoryOpen]     = useState(false)
+  const [historyKey,      setHistoryKey]      = useState(0)   // bump to force HistoryPanel re-mount with fresh data
 
   useEffect(() => {
     fetch('/config')
@@ -87,7 +149,7 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  const runScan = useCallback(async (xml) => {
+  const runScan = useCallback(async (xml, infoOverride) => {
     if (!xml?.trim()) return
     setIsScanning(true)
     setScanError('')
@@ -96,7 +158,10 @@ export default function App() {
       const parsed   = parseManifest(xml)
       const findings = buildFindings(parsed)
       const score    = computeSurfaceScore({ ...parsed, findings })
-      setScanState({ parsed, findings, score })
+      const state    = { parsed, findings, score }
+      setScanState(state)
+      saveToHistory(state, infoOverride ?? null)
+      setHistoryKey(k => k + 1)
     } catch (err) {
       setScanError(err.message)
     } finally {
@@ -111,13 +176,16 @@ export default function App() {
     setIsScanning(true)
     setScanError('')
     try {
-      const { xml, apkInfo: info } = await loadAPK(file, () => {})
+      const { xml, apkInfo: info, netSec, dexHits, sigInfo, suspiciousAssets } = await loadAPK(file, () => {})
       setXmlInput(xml)
       setApkInfo(info)
       const parsed   = parseManifest(xml)
-      const findings = buildFindings(parsed)
+      const findings = buildFindings({ ...parsed, netSec, dexHits, sigInfo, suspiciousAssets })
       const score    = computeSurfaceScore({ ...parsed, findings })
-      setScanState({ parsed, findings, score })
+      const state    = { parsed, findings, score }
+      setScanState(state)
+      saveToHistory(state, info)
+      setHistoryKey(k => k + 1)
     } catch (err) {
       setScanError(err.message)
     } finally {
@@ -137,6 +205,23 @@ export default function App() {
     setScanError('')
     setSelectedFinding(null)
     setHighlightedNode(null)
+    setAiPanelOpen(false)
+    setHistoryOpen(false)
+  }, [])
+
+  const restoreFromHistory = useCallback((entry) => {
+    if (!entry?._scanState) return
+    setScanState(entry._scanState)
+    setApkInfo(entry._apkInfo ?? null)
+    setXmlInput('')
+    setSelectedFinding(null)
+    setHighlightedNode(null)
+    setAiPanelOpen(false)
+    setHistoryOpen(false)
+  }, [])
+
+  const toggleHistory = useCallback(() => {
+    setHistoryOpen(v => !v)
     setAiPanelOpen(false)
   }, [])
 
@@ -239,18 +324,60 @@ export default function App() {
     )
   }
 
+  // ── History view (can be opened from any state) ───────────────────────────────
+  const historyCount = loadHistory().length
+
+  if (historyOpen) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Header
+          scanState={scanState}
+          onReset={scanState ? resetScan : null}
+          apkInfo={apkInfo}
+          aiHasKey={aiHasKey}
+          onToggleTheme={toggleTheme}
+          isDark={isDark}
+          onToggleHistory={toggleHistory}
+          historyActive={true}
+          historyCount={historyCount}
+        />
+        <HistoryPanel
+          key={historyKey}
+          initialHistory={loadHistory()}
+          onRestore={restoreFromHistory}
+          onClose={toggleHistory}
+        />
+      </div>
+    )
+  }
+
   // ── Pre-scan state ────────────────────────────────────────────────────────────
   if (!scanState && !isScanning) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
-        <Header scanState={null} onReset={null} aiHasKey={aiHasKey} onToggleTheme={toggleTheme} isDark={isDark} />
-        {/* Subtle background grid */}
+        <Header
+          scanState={null}
+          onReset={null}
+          aiHasKey={aiHasKey}
+          onToggleTheme={toggleTheme}
+          isDark={isDark}
+          onToggleHistory={toggleHistory}
+          historyActive={false}
+          historyCount={historyCount}
+        />
         <div className="flex-1 flex items-center justify-center p-8 relative overflow-hidden">
+          {/* Layered grid + ambient glow */}
           <div
-            className="absolute inset-0 opacity-[0.03]"
+            className="absolute inset-0"
             style={{
-              backgroundImage: 'linear-gradient(rgba(0,212,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,1) 1px, transparent 1px)',
-              backgroundSize: '60px 60px',
+              backgroundImage: 'linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px)',
+              backgroundSize: '56px 56px',
+            }}
+          />
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: 'radial-gradient(ellipse 70% 60% at 50% 40%, rgba(0,212,255,0.04) 0%, transparent 70%)',
             }}
           />
           <DropZone
@@ -271,7 +398,16 @@ export default function App() {
   if (isScanning) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
-        <Header scanState={null} onReset={null} aiHasKey={aiHasKey} onToggleTheme={toggleTheme} isDark={isDark} />
+        <Header
+          scanState={null}
+          onReset={null}
+          aiHasKey={aiHasKey}
+          onToggleTheme={toggleTheme}
+          isDark={isDark}
+          onToggleHistory={toggleHistory}
+          historyActive={false}
+          historyCount={historyCount}
+        />
         <ScanningOverlay />
       </div>
     )
@@ -290,9 +426,21 @@ export default function App() {
         onExportMermaid={exportMermaid}
         onToggleTheme={toggleTheme}
         isDark={isDark}
+        onToggleHistory={toggleHistory}
+        historyActive={false}
+        historyCount={historyCount}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div
+        className="flex flex-1 overflow-hidden"
+        style={{
+          background: 'var(--color-bg)',
+          backgroundImage: `
+            radial-gradient(ellipse 60% 50% at 25% 45%, rgba(0,212,255,0.025) 0%, transparent 70%),
+            radial-gradient(ellipse 40% 40% at 75% 55%, rgba(163,113,247,0.018) 0%, transparent 65%)
+          `,
+        }}
+      >
         {/* Left: Components sidebar */}
         <Sidebar
           scanState={scanState}
@@ -311,6 +459,7 @@ export default function App() {
               scanState={scanState}
               highlightedNode={highlightedNode}
               onHighlight={setHighlightedNode}
+              isDark={isDark}
             />
           </div>
 

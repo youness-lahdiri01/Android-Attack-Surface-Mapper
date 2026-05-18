@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  # ── Express API (backend only — nginx serves the frontend) ───────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    container_name: aasm-backend
+    expose:
+      - "3000"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=3000
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - aasm-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/config"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── nginx: serves React SPA + proxies /api & /config to backend ──────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: aasm-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aasm-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  aasm-net:
+    driver: bridge

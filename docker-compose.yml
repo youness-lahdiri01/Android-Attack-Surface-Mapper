@@ -1,0 +1,54 @@
+version: '3.9'
+
+services:
+  # ── Express API + nodemon hot-reload ─────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aasm-backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server:/app/server
+      - ./public:/app/public
+      - /app/node_modules
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=3000
+      - NODE_ENV=development
+    restart: unless-stopped
+    networks:
+      - aasm-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/config"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Vite dev server with HMR ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: aasm-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    environment:
+      # Tells vite.config.js where to proxy /api and /config requests.
+      - API_URL=http://backend:3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aasm-net
+
+networks:
+  aasm-net:
+    driver: bridge
